@@ -264,6 +264,9 @@
     fileName: '',
   };
 
+  // Track which columns the user has manually set via badge cycling
+  const userSchemaOverrides = new Set();
+
   /* ══════════════════════════════════════════════════════════════
      RENDER FUNCTIONS
      ══════════════════════════════════════════════════════════════ */
@@ -275,7 +278,14 @@
     const rows = getFilledRows();
     if (!rows.length) { state.schema = {}; return; }
     const s = {};
-    state.columns.forEach(col => { s[col] = guessType(rows.map(r => r[col])); });
+    state.columns.forEach(col => {
+      // Respect manual user overrides from badge cycling
+      if (userSchemaOverrides.has(col) && state.schema[col]) {
+        s[col] = state.schema[col];
+      } else {
+        s[col] = guessType(rows.map(r => r[col]));
+      }
+    });
     state.schema = s;
   }
 
@@ -399,7 +409,7 @@
           'data-r': String(ri),
           'data-c': String(ci),
         });
-        inp.addEventListener('input', () => { state.data[ri][col] = inp.value; autoDetectSchema(); renderStatus(); });
+        inp.addEventListener('input', () => { state.data[ri][col] = inp.value; renderStatus(); });
         inp.addEventListener('paste', e => handleGridPaste(e, ri, ci));
         inp.addEventListener('keydown', e => handleGridKeyDown(e, ri, ci));
         td.appendChild(inp);
@@ -440,7 +450,14 @@
       const sep = lines[0].includes('\t') ? '\t' : ',';
       const parsed = lines.map(l => l.split(sep).map(c => c.trim()));
 
-      if (rowIdx === 0 && colIdx === 0 && state.data.every(r => state.columns.every(c => !r[c]))) {
+      // Detect if the first row looks like headers (non-numeric, text labels)
+      const firstRow = parsed[0];
+      const looksLikeHeaders = firstRow.length > 0 && firstRow.every(v => v !== '' && isNaN(Number(v)));
+
+      const isEmptyGrid = state.data.every(r => state.columns.every(c => !r[c]));
+
+      if (rowIdx === 0 && colIdx === 0 && isEmptyGrid && looksLikeHeaders && parsed.length > 1) {
+        // Full data paste with headers detected
         const headers = parsed[0];
         const rows = parsed.slice(1).map(cells => {
           const r = {};
@@ -449,7 +466,16 @@
         });
         state.columns = headers;
         state.data = rows;
+        userSchemaOverrides.clear();
       } else {
+        // Paste as raw data — auto-create columns if needed
+        const maxCols = Math.max(...parsed.map(r => r.length)) + colIdx;
+        while (state.columns.length < maxCols) {
+          const name = `Col${state.columns.length + 1}`;
+          state.columns.push(name);
+          state.data.forEach(r => { r[name] = ''; });
+        }
+
         for (let dr = 0; dr < parsed.length; dr++) {
           const targetRow = rowIdx + dr;
           if (targetRow >= state.data.length) {
@@ -465,6 +491,7 @@
           }
         }
       }
+      userSchemaOverrides.clear();
       autoDetectSchema();
       render();
     }
@@ -515,6 +542,7 @@
         onClick: () => {
           const i = cycle.indexOf(state.schema[c]);
           state.schema[c] = cycle[(i + 1) % cycle.length];
+          userSchemaOverrides.add(c);
           render();
         }
       }, typeLabels[state.schema[c]]);
@@ -666,13 +694,11 @@
      MAIN RENDER
      ══════════════════════════════════════════════════════════════ */
   function render() {
-    autoDetectSchema();
     const root = document.getElementById('randomizer-root');
-    root.innerHTML = '';
 
     const page = el('div', {
       className: 'min-h-screen py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto',
-      style: { display: 'flex', flexDirection: 'column', gap: '24px' }
+      style: { display: 'flex', flexDirection: 'column', gap: '24px', minHeight: '100vh', paddingTop: '32px', paddingBottom: '32px', paddingLeft: '16px', paddingRight: '16px', maxWidth: '80rem', marginLeft: 'auto', marginRight: 'auto' }
     });
 
     // Header
@@ -794,11 +820,12 @@
       style: { textAlign: 'center', color: '#334155', fontSize: '12px', paddingTop: '32px', paddingBottom: '16px' }
     }, `Subject Randomizer · Covariate-Adaptive Minimization · © ${new Date().getFullYear()}`));
 
-    root.appendChild(page);
+    root.replaceChildren(page);
     renderStatus();
   }
 
   // Initial render
+  autoDetectSchema();
   render();
   </script>
 </body>

@@ -5,37 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Subject Randomizer — Covariate-Adaptive Minimization</title>
   <meta name="description" content="Randomize research subjects into balanced treatment groups using covariate-adaptive minimization. Handles continuous and categorical variables." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>" />
 
-  <!-- React 18 -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel (in-browser JSX) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Tailwind CSS Play CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- PapaParse for CSV -->
-  <script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
-  <!-- SheetJS for XLSX -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <!-- React 18 (cdnjs / Cloudflare) -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <!-- Babel standalone (cdnjs / Cloudflare) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.9/babel.min.js"></script>
+  <!-- Tailwind CSS v3 Play CDN -->
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <!-- PapaParse for CSV (cdnjs / Cloudflare) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <!-- SheetJS for XLSX (cdnjs / Cloudflare) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-          colors: {
-            brand: {
-              50:  '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe',
-              300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1',
-              600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81',
+    // Configure Tailwind v3 (only if loaded successfully)
+    if (typeof tailwind !== 'undefined' && tailwind.config) {
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+            colors: {
+              brand: {
+                50:  '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe',
+                300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1',
+                600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81',
+              },
             },
           },
         },
-      },
-    };
+      };
+    }
   </script>
 
   <style>

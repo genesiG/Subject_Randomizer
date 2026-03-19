@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subject Randomizer — Covariate-Adaptive Minimization</title>
+  <meta name="description" content="Randomize research subjects into balanced treatment groups using covariate-adaptive minimization. Handles continuous and categorical variables." />
+
+  <!-- React 18 -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel (in-browser JSX) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PapaParse for CSV -->
+  <script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
+  <!-- SheetJS for XLSX -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            brand: {
+              50:  '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe',
+              300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1',
+              600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81',
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; background: #0f1117; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+
+    /* glass card */
+    .glass {
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1rem;
+    }
+    .glass-hover { transition: transform .2s, box-shadow .2s; }
+    .glass-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(99,102,241,.15); }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 3px; }
+
+    /* pulse */
+    @keyframes pulse-border { 0%,100%{ border-color: rgba(99,102,241,.3) } 50%{ border-color: rgba(99,102,241,.7) } }
+    .pulse-border { animation: pulse-border 2s ease-in-out infinite; }
+
+    /* fade-in */
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
+    .fade-up { animation: fadeUp .45s ease-out both; }
+
+    /* drag overlay */
+    .drag-active { background: rgba(99,102,241,.08) !important; border-color: #6366f1 !important; }
+
+    /* spreadsheet grid */
+    .grid-table { border-collapse: collapse; width: 100%; }
+    .grid-table th, .grid-table td { border: 1px solid rgba(255,255,255,0.06); padding: 0; position: relative; }
+    .grid-table th { background: rgba(255,255,255,0.04); }
+    .grid-cell {
+      width: 100%; height: 100%; min-height: 32px;
+      background: transparent; border: none; outline: none;
+      color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; font-size: 13px;
+      padding: 6px 10px;
+    }
+    .grid-cell:focus { background: rgba(99,102,241,0.08); box-shadow: inset 0 0 0 2px rgba(99,102,241,0.4); }
+    .grid-header-cell {
+      width: 100%; height: 100%; min-height: 32px;
+      background: transparent; border: none; outline: none;
+      color: #94a3b8; font-family: 'Inter', system-ui, sans-serif; font-size: 12px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 6px 10px; text-align: left;
+    }
+    .grid-header-cell:focus { background: rgba(99,102,241,0.08); color: #e2e8f0; box-shadow: inset 0 0 0 2px rgba(99,102,241,0.4); }
+    .row-num { width: 40px; min-width: 40px; text-align: center; color: #475569; font-size: 11px; font-variant-numeric: tabular-nums; user-select: none; }
+    .row-action-btn { opacity: 0; transition: opacity .15s; }
+    tr:hover .row-action-btn { opacity: 1; }
+    .del-btn {
+      background: none; border: none; color: #ef4444; cursor: pointer;
+      font-size: 14px; padding: 2px 6px; border-radius: 4px; transition: background .15s;
+    }
+    .del-btn:hover { background: rgba(239,68,68,0.15); }
+  </style>
+</head>
+
+<body class="dark">
+  <div id="randomizer-root"></div>
+
+  <!-- ═══════ MINIMIZATION ENGINE (embedded) ═══════ -->
+  <script>
+    function fisherYatesShuffle(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+    function mean(nums) {
+      if (!nums.length) return 0;
+      return nums.reduce((s, v) => s + v, 0) / nums.length;
+    }
+    function calcContinuousImbalance(groups, col) {
+      const means = groups.map(g => {
+        const v = g.map(s => parseFloat(s[col])).filter(n => !isNaN(n));
+        return mean(v);
+      });
+      return Math.max(...means) - Math.min(...means);
+    }
+    function calcCategoricalImbalance(groups, col) {
+      const levels = new Set();
+      groups.forEach(g => g.forEach(s => levels.add(String(s[col]))));
+      let imb = 0;
+      for (const lv of levels) {
+        const c = groups.map(g => g.filter(s => String(s[col]) === lv).length);
+        imb += Math.max(...c) - Math.min(...c);
+      }
+      return imb;
+    }
+    function calcTotalImbalance(groups, schema) {
+      let t = 0;
+      for (const [col, type] of Object.entries(schema)) {
+        if (type === 'continuous')  t += calcContinuousImbalance(groups, col);
+        if (type === 'categorical') t += calcCategoricalImbalance(groups, col);
+      }
+      return t;
+    }
+    function assignSubject(subject, groups, n, schema) {
+      let best = Infinity, idxs = [];
+      for (let g = 0; g < n; g++) {
+        const trial = groups.map(a => a.slice());
+        trial[g].push(subject);
+        const s = calcTotalImbalance(trial, schema);
+        if (s < best) { best = s; idxs = [g]; }
+        else if (s === best) idxs.push(g);
+      }
+      return idxs[Math.floor(Math.random() * idxs.length)];
+    }
+    function runMinimization(subjects, numGroups, schema) {
+      const shuffled = fisherYatesShuffle(subjects);
+      const groups = Array.from({ length: numGroups }, () => []);
+      const assignments = [];
+      for (const s of shuffled) {
+        const g = assignSubject(s, groups, numGroups, schema);
+        groups[g].push(s);
+        assignments.push({ subject: s, group: g });
+      }
+      return { groups, assignments };
+    }
+    function summarizeGroups(groups, schema) {
+      return groups.map((g, i) => {
+        const o = { groupIndex: i, count: g.length, means: {}, counts: {} };
+        for (const [col, type] of Object.entries(schema)) {
+          if (type === 'continuous') {
+            const v = g.map(s => parseFloat(s[col])).filter(n => !isNaN(n));
+            o.means[col] = v.length ? mean(v) : null;
+          } else if (type === 'categorical') {
+            const f = {};
+            g.forEach(s => { const k = String(s[col]); f[k] = (f[k]||0)+1; });
+            o.counts[col] = f;
+          }
+        }
+        return o;
+      });
+    }
+  </script>
+
+  <!-- ═══════ REACT APPLICATION ═══════ -->
+  <script type="text/babel">
+    const { useState, useRef, useCallback, useMemo, useEffect } = React;
+
+    /* ── tiny helpers ──────────────────────────────────── */
+    const GROUP_COLORS = [
+      'from-indigo-500 to-violet-600',
+      'from-emerald-500 to-teal-600',
+      'from-amber-500 to-orange-600',
+      'from-rose-500 to-pink-600',
+      'from-cyan-500 to-sky-600',
+      'from-fuchsia-500 to-purple-600',
+      'from-lime-500 to-green-600',
+      'from-red-500 to-rose-600',
+    ];
+    const gc = i => GROUP_COLORS[i % GROUP_COLORS.length];
+
+    function guessType(values) {
+      const sample = values.slice(0, 50);
+      const numCount = sample.filter(v => v !== '' && v != null && !isNaN(Number(v))).length;
+      return numCount / sample.length > 0.7 ? 'continuous' : 'categorical';
+    }
+
+    function parseClipboard(text) {
+      const result = Papa.parse(text.trim(), { header: true, skipEmptyLines: true });
+      return result.data;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       SPREADSHEET GRID COMPONENT
+       ══════════════════════════════════════════════════════ */
+    function SpreadsheetGrid({ columns, data, setColumns, setData, readOnly }) {
+      const gridRef = useRef(null);
+
+      /* ── cell editing ── */
+      const updateCell = (rowIdx, col, val) => {
+        if (readOnly) return;
+        setData(prev => {
+          const next = prev.map(r => ({ ...r }));
+          next[rowIdx][col] = val;
+          return next;
+        });
+      };
+
+      const updateHeader = (colIdx, val) => {
+        if (readOnly) return;
+        const oldName = columns[colIdx];
+        const newName = val.trim() || `Col${colIdx + 1}`;
+        if (newName === oldName) return;
+        setColumns(prev => prev.map((c, i) => i === colIdx ? newName : c));
+        setData(prev => prev.map(row => {
+          const r = {};
+          columns.forEach((c, i) => { r[i === colIdx ? newName : c] = row[c] ?? ''; });
+          return r;
+        }));
+      };
+
+      /* ── add / remove ── */
+      const addRow = () => {
+        if (readOnly) return;
+        const emptyRow = {};
+        columns.forEach(c => { emptyRow[c] = ''; });
+        setData(prev => [...prev, emptyRow]);
+      };
+
+      const removeRow = (idx) => {
+        if (readOnly) return;
+        setData(prev => prev.filter((_, i) => i !== idx));
+      };
+
+      const addColumn = () => {
+        if (readOnly) return;
+        const name = `Col${columns.length + 1}`;
+        setColumns(prev => [...prev, name]);
+        setData(prev => prev.map(r => ({ ...r, [name]: '' })));
+      };
+
+      const removeColumn = (colIdx) => {
+        if (readOnly) return;
+        const colName = columns[colIdx];
+        setColumns(prev => prev.filter((_, i) => i !== colIdx));
+        setData(prev => prev.map(row => {
+          const r = { ...row };
+          delete r[colName];
+          return r;
+        }));
+      };
+
+      /* ── paste handler: intercept multi-cell paste ── */
+      const handlePaste = (e, rowIdx, colIdx) => {
+        if (readOnly) return;
+        const text = e.clipboardData.getData('text/plain');
+        if (!text) return;
+
+        // If the paste looks like multi-line tabular data, handle it specially
+        const lines = text.trim().split(/\r?\n/);
+        if (lines.length > 1 || lines[0].includes('\t') || lines[0].includes(',')) {
+          e.preventDefault();
+
+          // Detect whether this is a full dataset paste (with potential headers)
+          const sep = lines[0].includes('\t') ? '\t' : ',';
+          const parsed = lines.map(l => l.split(sep).map(c => c.trim()));
+
+          // If pasting into an empty grid or row 0, col 0 — treat as full data paste
+          if (rowIdx === 0 && colIdx === 0 && data.every(r => columns.every(c => !r[c]))) {
+            // First row is likely headers
+            const headers = parsed[0];
+            const rows = parsed.slice(1).map(cells => {
+              const r = {};
+              headers.forEach((h, i) => { r[h] = cells[i] || ''; });
+              return r;
+            });
+            setColumns(headers);
+            setData(rows);
+            return;
+          }
+
+          // Otherwise paste cells starting at the current position
+          setData(prev => {
+            const next = prev.map(r => ({ ...r }));
+            for (let dr = 0; dr < parsed.length; dr++) {
+              const targetRow = rowIdx + dr;
+              if (targetRow >= next.length) {
+                const emptyRow = {};
+                columns.forEach(c => { emptyRow[c] = ''; });
+                next.push(emptyRow);
+              }
+              for (let dc = 0; dc < parsed[dr].length; dc++) {
+                const targetCol = colIdx + dc;
+                if (targetCol < columns.length) {
+                  next[targetRow][columns[targetCol]] = parsed[dr][dc];
+                }
+              }
+            }
+            return next;
+          });
+        }
+      };
+
+      /* ── keyboard navigation ── */
+      const handleKeyDown = (e, rowIdx, colIdx) => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const nextCol = e.shiftKey ? colIdx - 1 : colIdx + 1;
+          if (nextCol >= 0 && nextCol < columns.length) {
+            const cell = gridRef.current?.querySelector(`[data-r="${rowIdx}"][data-c="${nextCol}"]`);
+            cell?.focus();
+          } else if (!e.shiftKey && nextCol >= columns.length && rowIdx + 1 < data.length) {
+            const cell = gridRef.current?.querySelector(`[data-r="${rowIdx + 1}"][data-c="0"]`);
+            cell?.focus();
+          }
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const cell = gridRef.current?.querySelector(`[data-r="${rowIdx + 1}"][data-c="${colIdx}"]`);
+          cell?.focus();
+        }
+      };
+
+      return (
+        <div ref={gridRef} className="overflow-x-auto rounded-xl border border-white/[.06]">
+          <table className="grid-table">
+            <thead>
+              <tr>
+                <th className="row-num" style={{ background: 'rgba(255,255,255,0.03)' }}></th>
+                {columns.map((col, ci) => (
+                  <th key={ci} className="relative group" style={{ minWidth: 100 }}>
+                    {readOnly ? (
+                      <div className="grid-header-cell">{col}</div>
+                    ) : (
+                      <input
+                        className="grid-header-cell"
+                        defaultValue={col}
+                        onBlur={e => updateHeader(ci, e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                      />
+                    )}
+                    {!readOnly && columns.length > 1 && (
+                      <button onClick={() => removeColumn(ci)}
+                        className="del-btn row-action-btn absolute top-0.5 right-0.5" title="Remove column">
+                        ×
+                      </button>
+                    )}
+                  </th>
+                ))}
+                {!readOnly && (
+                  <th style={{ width: 40, background: 'rgba(255,255,255,0.03)' }}>
+                    <button onClick={addColumn}
+                      className="del-btn w-full h-full text-indigo-400 hover:text-indigo-300" style={{ opacity: 1 }} title="Add column">
+                      +
+                    </button>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row, ri) => (
+                <tr key={ri} className="group">
+                  <td className="row-num relative">
+                    {ri + 1}
+                    {!readOnly && data.length > 1 && (
+                      <button onClick={() => removeRow(ri)}
+                        className="del-btn row-action-btn absolute inset-0 w-full h-full flex items-center justify-center bg-[#0f1117]/80"
+                        title="Remove row">
+                        ×
+                      </button>
+                    )}
+                  </td>
+                  {columns.map((col, ci) => (
+                    <td key={ci}>
+                      {readOnly ? (
+                        <div className="grid-cell">{row[col] ?? ''}</div>
+                      ) : (
+                        <input
+                          className="grid-cell"
+                          data-r={ri} data-c={ci}
+                          value={row[col] ?? ''}
+                          onChange={e => updateCell(ri, col, e.target.value)}
+                          onPaste={e => handlePaste(e, ri, ci)}
+                          onKeyDown={e => handleKeyDown(e, ri, ci)}
+                        />
+                      )}
+                    </td>
+                  ))}
+                  {!readOnly && <td style={{ width: 40 }}></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!readOnly && (
+            <button onClick={addRow}
+              className="w-full py-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-white/[.02] transition-colors font-medium cursor-pointer"
+              style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              + Add Row
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    /* ══════════════════════════════════════════════════════
+       OUTPUT GRID (with Group column, editable cells)
+       ══════════════════════════════════════════════════════ */
+    function OutputGrid({ assignments, columns }) {
+      const [outputData, setOutputData] = useState([]);
+      const outputCols = useMemo(() => ['AssignedGroup', ...columns], [columns]);
+
+      useEffect(() => {
+        setOutputData(assignments.map(a => ({
+          AssignedGroup: `Group ${a.group + 1}`,
+          ...a.subject,
+          _groupIdx: a.group,
+        })));
+      }, [assignments]);
+
+      const updateCell = (ri, col, val) => {
+        setOutputData(prev => {
+          const next = prev.map(r => ({ ...r }));
+          next[ri][col] = val;
+          return next;
+        });
+      };
+
+      const handleDownload = () => {
+        const out = outputData.map(r => {
+          const { _groupIdx, ...rest } = r;
+          return rest;
+        });
+        const csv = Papa.unparse(out);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'randomization_results.csv';
+        a.click();
+      };
+
+      return (
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-xl border border-white/[.06]">
+            <table className="grid-table">
+              <thead>
+                <tr>
+                  <th className="row-num" style={{ background: 'rgba(255,255,255,0.03)' }}></th>
+                  {outputCols.map((col, ci) => (
+                    <th key={ci} style={{ minWidth: 100 }}>
+                      <div className="grid-header-cell">{col}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {outputData.map((row, ri) => (
+                  <tr key={ri} className="group">
+                    <td className="row-num">{ri + 1}</td>
+                    {outputCols.map((col, ci) => (
+                      <td key={ci}>
+                        {col === 'AssignedGroup' ? (
+                          <div className="grid-cell flex items-center">
+                            <span className={`inline-block bg-gradient-to-r ${gc(row._groupIdx)} text-white text-xs font-bold px-2.5 py-0.5 rounded-full`}>
+                              {row[col]}
+                            </span>
+                          </div>
+                        ) : (
+                          <input
+                            className="grid-cell"
+                            value={row[col] ?? ''}
+                            onChange={e => updateCell(ri, col, e.target.value)}
+                          />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <button onClick={handleDownload}
+            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-bold px-6 py-2.5 rounded-lg transition-all duration-200 hover:scale-[1.04] active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer">
+            ⬇ Download CSV
+          </button>
+        </div>
+      );
+    }
+
+    /* ── components ────────────────────────────────────── */
+
+    function WarningBanner() {
+      return (
+        <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl px-5 py-3 flex items-center gap-3 fade-up">
+          <span className="text-2xl">⚠️</span>
+          <p className="text-amber-200 text-sm font-medium">
+            <strong>NOTE:</strong> Download your output data before closing this window. Results are not saved automatically.
+          </p>
+        </div>
+      );
+    }
+
+    function InstructionsBanner() {
+      return (
+        <div className="glass rounded-xl p-5 text-sm text-slate-400 space-y-2 fade-up" style={{ animationDelay: '.1s' }}>
+          <h3 className="text-slate-200 font-semibold text-base mb-2">📋 How to use this tool</h3>
+          <ol className="list-decimal list-inside space-y-1.5 leading-relaxed">
+            <li><strong className="text-slate-300">Upload or enter your data</strong> — Click <em>"Choose File"</em> to upload a <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs">.csv</code> or <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs">.xlsx</code> file, <strong>or</strong> type directly into the spreadsheet grid below. You can also <strong>paste</strong> tabular data (from Excel, Google Sheets, etc.) into the first cell and it will auto-parse into rows and columns.</li>
+            <li><strong className="text-slate-300">Review detected columns</strong> — The tool auto-detects whether each column is <em>Continuous</em> (numbers) or <em>Categorical</em> (text/labels). Click the <span className="text-indigo-400 font-semibold">badge</span> to cycle: Continuous → Categorical → ID (skip).</li>
+            <li><strong className="text-slate-300">Set number of groups</strong> — Choose how many treatment groups you need (2–20).</li>
+            <li><strong className="text-slate-300">Randomize</strong> — Click the button. The minimization algorithm will assign each subject to the group that keeps covariates most balanced.</li>
+            <li><strong className="text-slate-300">Download</strong> — Click <em>"Download CSV"</em> below the results grid to save your data.</li>
+          </ol>
+        </div>
+      );
+    }
+
+    /* ── Toggle ── */
+    function TypeToggle({ value, onChange }) {
+      const cycle = ['continuous', 'categorical', 'id'];
+      const labels = { continuous: 'Continuous', categorical: 'Categorical', id: 'ID (skip)' };
+      const colors = { continuous: 'bg-indigo-600', categorical: 'bg-emerald-600', id: 'bg-slate-600' };
+
+      const next = () => {
+        const i = cycle.indexOf(value);
+        onChange(cycle[(i + 1) % cycle.length]);
+      };
+
+      return (
+        <button onClick={next}
+          className={`${colors[value]} text-white text-xs font-semibold px-3 py-1 rounded-full transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer whitespace-nowrap`}>
+          {labels[value]}
+        </button>
+      );
+    }
+
+    /* ── Schema Editor ── */
+    function SchemaEditor({ schema, setSchema }) {
+      const cols = Object.keys(schema);
+      if (!cols.length) return null;
+
+      return (
+        <div className="glass rounded-xl p-5 fade-up" style={{ animationDelay: '.15s' }}>
+          <h3 className="text-slate-200 font-semibold text-base mb-1">🏷️ Column Types</h3>
+          <p className="text-slate-500 text-xs mb-4">Click a badge to cycle: Continuous → Categorical → ID (skip) → …</p>
+          <div className="flex flex-wrap gap-3">
+            {cols.map(c => (
+              <div key={c} className="flex items-center gap-2 bg-white/[.03] border border-white/[.06] rounded-lg px-3 py-2">
+                <span className="text-slate-300 text-sm font-medium truncate max-w-[140px]">{c}</span>
+                <TypeToggle value={schema[c]} onChange={v => setSchema(s => ({ ...s, [c]: v }))} />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    /* ── Summary Cards (FIXED formatting: colon + space) ── */
+    function SummaryCards({ summaries, schema }) {
+      const contCols = Object.entries(schema).filter(([,t]) => t === 'continuous').map(([c]) => c);
+      const catCols  = Object.entries(schema).filter(([,t]) => t === 'categorical').map(([c]) => c);
+
+      return (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {summaries.map((s, i) => (
+            <div key={i} className="glass glass-hover rounded-xl p-5 fade-up" style={{ animationDelay: `${i * .07}s` }}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`inline-block bg-gradient-to-r ${gc(i)} text-white text-xs font-bold px-3 py-1 rounded-full`}>
+                  Group {i + 1}
+                </span>
+                <span className="text-slate-500 text-xs ml-auto">{s.count} subjects</span>
+              </div>
+
+              {/* Continuous means */}
+              {contCols.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">Means</p>
+                  {contCols.map(c => (
+                    <div key={c} className="flex justify-between text-xs py-0.5">
+                      <span className="text-slate-400">{c}:</span>
+                      <span className="text-slate-200 font-mono ml-2">{s.means[c] != null ? s.means[c].toFixed(3) : '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Categorical counts */}
+              {catCols.map(c => (
+                <div key={c} className="mb-3">
+                  <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">{c}</p>
+                  {s.counts[c] && Object.entries(s.counts[c]).map(([lv, n]) => (
+                    <div key={lv} className="flex justify-between text-xs py-0.5">
+                      <span className="text-slate-400">{lv}:</span>
+                      <span className="text-slate-200 font-mono ml-2">{n}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    /* ══════════════ MAIN APP ══════════════ */
+    function App() {
+      const DEFAULT_COLS = ['SubjectID', 'Col1', 'Col2'];
+      const DEFAULT_ROWS = Array.from({ length: 5 }, () => {
+        const r = {};
+        DEFAULT_COLS.forEach(c => { r[c] = ''; });
+        return r;
+      });
+
+      const [gridColumns, setGridColumns] = useState(DEFAULT_COLS);
+      const [gridData, setGridData]       = useState(DEFAULT_ROWS);
+      const [schema, setSchema]           = useState({});
+      const [numGroups, setNumGroups]     = useState(3);
+      const [results, setResults]         = useState(null);
+      const [dragActive, setDragActive]   = useState(false);
+      const [fileName, setFileName]       = useState('');
+      const fileRef = useRef();
+
+      /* derived: real rows (at least one non-empty cell) */
+      const rows = useMemo(() => {
+        return gridData.filter(r => gridColumns.some(c => r[c] != null && String(r[c]).trim() !== ''));
+      }, [gridData, gridColumns]);
+
+      const hasData = rows.length > 0;
+
+      /* auto-detect schema when grid columns / data change */
+      useEffect(() => {
+        if (!hasData) { setSchema({}); return; }
+        const s = {};
+        gridColumns.forEach(col => {
+          s[col] = guessType(rows.map(r => r[col]));
+        });
+        setSchema(s);
+      }, [gridColumns, hasData]);
+
+      /* ── ingest helpers ── */
+      const ingest = useCallback((data) => {
+        if (!data.length) return;
+        const cols = Object.keys(data[0]);
+        setGridColumns(cols);
+        setGridData(data);
+        setResults(null);
+      }, []);
+
+      const handleFile = useCallback((file) => {
+        if (!file) return;
+        setFileName(file.name);
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'csv' || ext === 'tsv' || ext === 'txt') {
+          const reader = new FileReader();
+          reader.onload = e => ingest(parseClipboard(e.target.result));
+          reader.readAsText(file);
+        } else {
+          const reader = new FileReader();
+          reader.onload = e => {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+            ingest(data);
+          };
+          reader.readAsArrayBuffer(file);
+        }
+      }, [ingest]);
+
+      /* ── drag & drop ── */
+      const onDragOver = e => { e.preventDefault(); setDragActive(true); };
+      const onDragLeave = () => setDragActive(false);
+      const onDrop = e => { e.preventDefault(); setDragActive(false); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+
+      /* ── randomize ── */
+      const handleRandomize = () => {
+        const activeSchema = {};
+        for (const [col, type] of Object.entries(schema)) {
+          if (type !== 'id') activeSchema[col] = type;
+        }
+        const res = runMinimization(rows, numGroups, activeSchema);
+        const summaries = summarizeGroups(res.groups, activeSchema);
+        setResults({ ...res, summaries, activeSchema });
+      };
+
+      return (
+        <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-6">
+
+          {/* ── Header ── */}
+          <header className="text-center mb-2 fade-up">
+            <h1 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-indigo-400 via-violet-400 to-fuchsia-400 bg-clip-text text-transparent leading-tight">
+              Subject Randomizer
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">Covariate-Adaptive Minimization for Preclinical Studies</p>
+          </header>
+
+          <WarningBanner />
+          <InstructionsBanner />
+
+          {/* ── Data Input ── */}
+          <div
+            className={`glass rounded-xl p-6 space-y-4 fade-up transition-colors ${dragActive ? 'drag-active pulse-border' : ''}`}
+            style={{ animationDelay: '.2s' }}
+            onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-slate-200 font-semibold text-base">📂 Enter or Upload Your Data</h3>
+              <div className="flex items-center gap-3">
+                <input id="file-upload" ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+                <button onClick={() => fileRef.current.click()}
+                  className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-all duration-200 hover:scale-[1.03] active:scale-95 shadow-lg shadow-indigo-500/20 cursor-pointer">
+                  📄 Upload File
+                </button>
+                {fileName && <span className="text-slate-400 text-xs">✔ {fileName}</span>}
+                <span className="text-slate-600 text-xs">.csv · .xlsx · .tsv — or drag &amp; drop</span>
+              </div>
+            </div>
+
+            {/* ── Editable input spreadsheet ── */}
+            <SpreadsheetGrid
+              columns={gridColumns}
+              data={gridData}
+              setColumns={setGridColumns}
+              setData={setGridData}
+              readOnly={false}
+            />
+
+            {hasData && (
+              <p className="text-emerald-400 text-xs font-medium">✔ {rows.length} subjects loaded · {gridColumns.length} columns detected</p>
+            )}
+          </div>
+
+          {/* ── Schema Editor ── */}
+          {hasData && <SchemaEditor schema={schema} setSchema={setSchema} />}
+
+          {/* ── Controls ── */}
+          {hasData && (
+            <div className="flex flex-wrap items-end gap-4 fade-up" style={{ animationDelay: '.25s' }}>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1 font-medium">Number of Groups</label>
+                <input type="number" min={2} max={20} value={numGroups} onChange={e => setNumGroups(Math.max(2, Math.min(20, +e.target.value)))}
+                  className="w-24 bg-white/[.05] border border-white/[.1] rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+              </div>
+              <button onClick={handleRandomize}
+                className="bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white text-sm font-bold px-8 py-2.5 rounded-lg transition-all duration-200 hover:scale-[1.04] active:scale-95 shadow-lg shadow-fuchsia-500/20 cursor-pointer">
+                🎲 Randomize
+              </button>
+            </div>
+          )}
+
+          {/* ── Results ── */}
+          {results && (
+            <div className="space-y-6 fade-up">
+              <h2 className="text-xl font-bold text-slate-200">Group Summaries</h2>
+              <SummaryCards summaries={results.summaries} schema={results.activeSchema} />
+
+              <h2 className="text-xl font-bold text-slate-200">Full Assignments</h2>
+              <OutputGrid assignments={results.assignments} columns={gridColumns} />
+            </div>
+          )}
+
+          {/* ── Footer ── */}
+          <footer className="text-center text-slate-700 text-xs pt-8 pb-4">
+            Subject Randomizer · Covariate-Adaptive Minimization · © {new Date().getFullYear()}
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('randomizer-root')).render(<App />);
+  </script>
+</body>
+</html>

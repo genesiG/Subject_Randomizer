@@ -6,47 +6,34 @@
   <title>Subject Randomizer — Covariate-Adaptive Minimization</title>
   <meta name="description" content="Randomize research subjects into balanced treatment groups using covariate-adaptive minimization. Handles continuous and categorical variables." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>" />
-
-  <!-- Tailwind CSS v3 Play CDN (the ONLY external dependency) -->
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  <script>
-    if (typeof tailwind !== 'undefined' && tailwind.config) {
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-          },
-        },
-      };
-    }
-  </script>
-
   <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    body { margin: 0; background: #0f1117; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f1117; color: #e2e8f0; font-family: 'Inter', system-ui, -apple-system, sans-serif; line-height: 1.5; }
 
+    /* ── Glass Card ── */
     .glass {
       background: rgba(255,255,255,0.04);
       backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 1rem;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
     }
     .glass-hover { transition: transform .2s, box-shadow .2s; }
     .glass-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(99,102,241,.15); }
 
+    /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 3px; }
 
+    /* ── Animations (only on first render) ── */
     @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
     .fade-up { animation: fadeUp .45s ease-out both; }
-
     .drag-active { background: rgba(99,102,241,.08) !important; border-color: #6366f1 !important; }
 
-    /* Grid styles */
+    /* ── Spreadsheet Grid ── */
     .grid-table { border-collapse: collapse; width: 100%; }
     .grid-table th, .grid-table td { border: 1px solid rgba(255,255,255,0.06); padding: 0; position: relative; }
     .grid-table th { background: rgba(255,255,255,0.04); }
@@ -73,13 +60,23 @@
     }
     .del-btn:hover { background: rgba(239,68,68,0.15); }
 
-    .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 9999px; color: #fff; cursor: pointer; transition: transform .15s; }
+    /* ── Badges ── */
+    .badge {
+      display: inline-block; font-size: 12px; font-weight: 700;
+      padding: 2px 10px; border-radius: 9999px; color: #fff;
+      cursor: pointer; transition: transform .15s; white-space: nowrap;
+    }
     .badge:hover { transform: scale(1.05); }
     .badge:active { transform: scale(0.95); }
     .badge-indigo { background: linear-gradient(135deg, #6366f1, #7c3aed); }
     .badge-emerald { background: linear-gradient(135deg, #10b981, #0d9488); }
     .badge-slate { background: linear-gradient(135deg, #64748b, #475569); }
+    .group-badge {
+      display: inline-block; font-size: 11px; font-weight: 700;
+      padding: 3px 10px; border-radius: 9999px; color: #fff;
+    }
 
+    /* ── Buttons ── */
     .btn {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 14px; font-weight: 600; padding: 10px 24px; border-radius: 8px;
@@ -91,16 +88,55 @@
     .btn-success { background: linear-gradient(135deg, #10b981, #0d9488); box-shadow: 0 4px 14px rgba(16,185,129,.25); }
     .btn-upload { background: linear-gradient(135deg, #6366f1, #7c3aed); box-shadow: 0 4px 14px rgba(99,102,241,.2); }
 
-    .group-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; color: #fff; }
+    /* ── Responsive Summary Grid ── */
+    .summary-grid {
+      display: grid; gap: 16px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 1024px) { .summary-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 1280px) { .summary-grid { grid-template-columns: repeat(4, 1fr); } }
+
+    /* ── Page Container ── */
+    .page-container {
+      min-height: 100vh;
+      padding: 32px 16px;
+      max-width: 80rem;
+      margin-left: auto;
+      margin-right: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    @media (min-width: 640px) { .page-container { padding-left: 24px; padding-right: 24px; } }
+    @media (min-width: 1024px) { .page-container { padding-left: 32px; padding-right: 32px; } }
+
+    /* ── Add Row Button ── */
+    .add-row-btn {
+      width: 100%; padding: 8px; font-size: 12px; font-weight: 500;
+      color: #818cf8; background: transparent; border: none;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      cursor: pointer; transition: color .15s, background .15s;
+    }
+    .add-row-btn:hover { color: #a5b4fc; background: rgba(255,255,255,0.02); }
+
+    /* ── Group Input ── */
+    .group-input {
+      width: 80px; background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+      padding: 8px 12px; font-size: 14px; color: #e2e8f0; outline: none;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    .group-input:focus { box-shadow: 0 0 0 2px rgba(99,102,241,0.4); }
   </style>
 </head>
 
-<body class="dark">
+<body>
   <div id="randomizer-root"></div>
 
   <script>
   /* ══════════════════════════════════════════════════════════════
-     MINIMIZATION ENGINE — Pure functional JavaScript
+     MINIMIZATION ENGINE — @StatArchitect
      ══════════════════════════════════════════════════════════════ */
   function fisherYatesShuffle(arr) {
     const a = arr.slice();
@@ -113,6 +149,18 @@
   function mean(nums) {
     if (!nums.length) return 0;
     return nums.reduce((s, v) => s + v, 0) / nums.length;
+  }
+  function sampleStdDev(nums) {
+    if (nums.length < 2) return 0;
+    const m = mean(nums);
+    const ss = nums.reduce((s, v) => s + (v - m) ** 2, 0);
+    return Math.sqrt(ss / (nums.length - 1));
+  }
+  function median(nums) {
+    if (!nums.length) return 0;
+    const sorted = nums.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
   }
   function calcContinuousImbalance(groups, col) {
     const means = groups.map(g => {
@@ -163,11 +211,13 @@
   }
   function summarizeGroups(groups, schema) {
     return groups.map((g, i) => {
-      const o = { groupIndex: i, count: g.length, means: {}, counts: {} };
+      const o = { groupIndex: i, count: g.length, means: {}, sds: {}, medians: {}, counts: {} };
       for (const [col, type] of Object.entries(schema)) {
         if (type === 'continuous') {
           const v = g.map(s => parseFloat(s[col])).filter(n => !isNaN(n));
           o.means[col] = v.length ? mean(v) : null;
+          o.sds[col] = v.length >= 2 ? sampleStdDev(v) : null;
+          o.medians[col] = v.length ? median(v) : null;
         } else if (type === 'categorical') {
           const f = {};
           g.forEach(s => { const k = String(s[col]); f[k] = (f[k]||0)+1; });
@@ -179,12 +229,11 @@
   }
 
   /* ══════════════════════════════════════════════════════════════
-     INLINE CSV PARSER — No PapaParse needed
+     INLINE CSV PARSER
      ══════════════════════════════════════════════════════════════ */
   function parseCSV(text) {
     const lines = text.trim().split(/\r?\n/);
     if (lines.length < 2) return [];
-    // Detect separator
     const sep = lines[0].includes('\t') ? '\t' : ',';
     const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''));
     const data = [];
@@ -197,7 +246,6 @@
     }
     return data;
   }
-
   function unparseCSV(data) {
     if (!data.length) return '';
     const headers = Object.keys(data[0]);
@@ -263,12 +311,11 @@
     results: null,
     fileName: '',
   };
-
-  // Track which columns the user has manually set via badge cycling
   const userSchemaOverrides = new Set();
+  let isFirstRender = true;
 
   /* ══════════════════════════════════════════════════════════════
-     RENDER FUNCTIONS
+     RENDER HELPERS
      ══════════════════════════════════════════════════════════════ */
   function getFilledRows() {
     return state.data.filter(r => state.columns.some(c => r[c] != null && String(r[c]).trim() !== ''));
@@ -279,7 +326,6 @@
     if (!rows.length) { state.schema = {}; return; }
     const s = {};
     state.columns.forEach(col => {
-      // Respect manual user overrides from badge cycling
       if (userSchemaOverrides.has(col) && state.schema[col]) {
         s[col] = state.schema[col];
       } else {
@@ -294,6 +340,7 @@
     state.columns = Object.keys(data[0]);
     state.data = data;
     state.results = null;
+    userSchemaOverrides.clear();
     autoDetectSchema();
     render();
   }
@@ -307,13 +354,11 @@
       reader.onload = e => ingestData(parseCSV(e.target.result));
       reader.readAsText(file);
     } else {
-      // For XLSX: try to parse if SheetJS is loaded, otherwise alert
       reader.onload = e => {
         if (typeof XLSX !== 'undefined') {
           const wb = XLSX.read(e.target.result, { type: 'array' });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
-          ingestData(data);
+          ingestData(XLSX.utils.sheet_to_json(ws, { defval: '' }));
         } else {
           alert('XLSX support requires the SheetJS library. Please save your file as .csv and upload again.');
         }
@@ -324,7 +369,7 @@
 
   /* ── Build Input Grid ── */
   function buildInputGrid() {
-    const container = el('div', { className: 'overflow-x-auto rounded-xl border border-white/[.06]' });
+    const container = el('div', { style: { overflowX: 'auto', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' } });
     const table = el('table', { className: 'grid-table' });
 
     // Header
@@ -332,17 +377,16 @@
     const hRow = el('tr');
     hRow.appendChild(el('th', { className: 'row-num', style: { background: 'rgba(255,255,255,0.03)' } }));
     state.columns.forEach((col, ci) => {
-      const th = el('th', { className: 'relative group', style: { minWidth: '100px' } });
+      const th = el('th', { style: { position: 'relative', minWidth: '100px' } });
       const inp = el('input', { className: 'grid-header-cell', value: col });
       inp.addEventListener('blur', () => {
-        const newName = inp.value.trim() || `Col${ci + 1}`;
+        const newName = inp.value.trim() || 'Col' + (ci + 1);
         if (newName === state.columns[ci]) return;
         const oldName = state.columns[ci];
         state.columns[ci] = newName;
         state.data = state.data.map(row => {
           const r = {};
-          state.columns.forEach((c, i) => { r[c] = i === ci ? row[oldName] ?? '' : row[c] ?? ''; });
-          // Remove old key if name changed
+          state.columns.forEach((c, i) => { r[c] = i === ci ? (row[oldName] ?? '') : (row[c] ?? ''); });
           return r;
         });
         autoDetectSchema();
@@ -358,11 +402,11 @@
           onClick: () => {
             const colName = state.columns[ci];
             state.columns.splice(ci, 1);
-            state.data = state.data.map(row => { const r = { ...row }; delete r[colName]; return r; });
+            state.data = state.data.map(row => { const r = Object.assign({}, row); delete r[colName]; return r; });
             autoDetectSchema();
             render();
           }
-        }, '×');
+        }, '\u00d7');
         th.appendChild(delBtn);
       }
       hRow.appendChild(th);
@@ -374,7 +418,7 @@
       style: { opacity: '1', width: '100%', color: '#818cf8' },
       title: 'Add column',
       onClick: () => {
-        const name = `Col${state.columns.length + 1}`;
+        const name = 'Col' + (state.columns.length + 1);
         state.columns.push(name);
         state.data.forEach(r => { r[name] = ''; });
         autoDetectSchema();
@@ -388,15 +432,15 @@
     // Body
     const tbody = el('tbody');
     state.data.forEach((row, ri) => {
-      const tr = el('tr', { className: 'group' });
-      const numTd = el('td', { className: 'row-num relative' }, String(ri + 1));
+      const tr = el('tr');
+      const numTd = el('td', { className: 'row-num', style: { position: 'relative' } }, String(ri + 1));
       if (state.data.length > 1) {
         const delRow = el('button', {
           className: 'del-btn row-action-btn',
           title: 'Remove row',
           style: { position: 'absolute', inset: '0', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,17,23,0.8)' },
           onClick: () => { state.data.splice(ri, 1); autoDetectSchema(); render(); }
-        }, '×');
+        }, '\u00d7');
         numTd.appendChild(delRow);
       }
       tr.appendChild(numTd);
@@ -423,8 +467,7 @@
 
     // Add Row button
     const addRowBtn = el('button', {
-      className: 'w-full py-2 text-xs font-medium cursor-pointer',
-      style: { color: '#818cf8', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'transparent', border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px', fontSize: '12px', fontWeight: '500', cursor: 'pointer', width: '100%' },
+      className: 'add-row-btn',
       onClick: () => {
         const emptyRow = {};
         state.columns.forEach(c => { emptyRow[c] = ''; });
@@ -432,8 +475,6 @@
         render();
       }
     }, '+ Add Row');
-    addRowBtn.addEventListener('mouseenter', () => { addRowBtn.style.color = '#a5b4fc'; addRowBtn.style.background = 'rgba(255,255,255,0.02)'; });
-    addRowBtn.addEventListener('mouseleave', () => { addRowBtn.style.color = '#818cf8'; addRowBtn.style.background = 'transparent'; });
 
     const wrapper = el('div');
     wrapper.appendChild(container);
@@ -442,7 +483,8 @@
   }
 
   function handleGridPaste(e, rowIdx, colIdx) {
-    const text = e.clipboardData.getData('text/plain');
+    const text = (e.clipboardData || window.clipboardData || {}).getData('text') ||
+                 (e.clipboardData || window.clipboardData || {}).getData('text/plain');
     if (!text) return;
     const lines = text.trim().split(/\r?\n/);
     if (lines.length > 1 || lines[0].includes('\t') || lines[0].includes(',')) {
@@ -450,16 +492,14 @@
       const sep = lines[0].includes('\t') ? '\t' : ',';
       const parsed = lines.map(l => l.split(sep).map(c => c.trim()));
 
-      // Detect if the first row looks like headers (non-numeric, text labels)
+      // Detect if the first row looks like headers (all non-numeric text labels)
       const firstRow = parsed[0];
       const looksLikeHeaders = firstRow.length > 0 && firstRow.every(v => v !== '' && isNaN(Number(v)));
 
-      const isEmptyGrid = state.data.every(r => state.columns.every(c => !r[c]));
-
-      if (rowIdx === 0 && colIdx === 0 && isEmptyGrid && looksLikeHeaders && parsed.length > 1) {
-        // Full data paste with headers detected
+      if (rowIdx === 0 && colIdx === 0 && looksLikeHeaders && parsed.length > 1) {
+        // Full data paste with header row detected
         const headers = parsed[0];
-        const rows = parsed.slice(1).map(cells => {
+        const rows = parsed.slice(1).filter(cells => !cells.every(c => c === '')).map(cells => {
           const r = {};
           headers.forEach((h, i) => { r[h] = cells[i] || ''; });
           return r;
@@ -469,22 +509,21 @@
         userSchemaOverrides.clear();
       } else {
         // Paste as raw data — auto-create columns if needed
-        const maxCols = Math.max(...parsed.map(r => r.length)) + colIdx;
+        const maxCols = Math.max.apply(null, parsed.map(r => r.length)) + colIdx;
         while (state.columns.length < maxCols) {
-          const name = `Col${state.columns.length + 1}`;
+          const name = 'Col' + (state.columns.length + 1);
           state.columns.push(name);
           state.data.forEach(r => { r[name] = ''; });
         }
-
-        for (let dr = 0; dr < parsed.length; dr++) {
-          const targetRow = rowIdx + dr;
+        for (var dr = 0; dr < parsed.length; dr++) {
+          var targetRow = rowIdx + dr;
           if (targetRow >= state.data.length) {
-            const emptyRow = {};
+            var emptyRow = {};
             state.columns.forEach(c => { emptyRow[c] = ''; });
             state.data.push(emptyRow);
           }
-          for (let dc = 0; dc < parsed[dr].length; dc++) {
-            const targetCol = colIdx + dc;
+          for (var dc = 0; dc < parsed[dr].length; dc++) {
+            var targetCol = colIdx + dc;
             if (targetCol < state.columns.length) {
               state.data[targetRow][state.columns[targetCol]] = parsed[dr][dc];
             }
@@ -498,49 +537,49 @@
   }
 
   function handleGridKeyDown(e, rowIdx, colIdx) {
-    const grid = document.getElementById('input-grid');
+    var grid = document.getElementById('input-grid');
     if (!grid) return;
     if (e.key === 'Tab') {
       e.preventDefault();
-      const nc = e.shiftKey ? colIdx - 1 : colIdx + 1;
+      var nc = e.shiftKey ? colIdx - 1 : colIdx + 1;
       if (nc >= 0 && nc < state.columns.length) {
-        const cell = grid.querySelector(`[data-r="${rowIdx}"][data-c="${nc}"]`);
+        var cell = grid.querySelector('[data-r="' + rowIdx + '"][data-c="' + nc + '"]');
         if (cell) cell.focus();
       } else if (!e.shiftKey && nc >= state.columns.length && rowIdx + 1 < state.data.length) {
-        const cell = grid.querySelector(`[data-r="${rowIdx + 1}"][data-c="0"]`);
-        if (cell) cell.focus();
+        var cell2 = grid.querySelector('[data-r="' + (rowIdx + 1) + '"][data-c="0"]');
+        if (cell2) cell2.focus();
       }
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      const cell = grid.querySelector(`[data-r="${rowIdx + 1}"][data-c="${colIdx}"]`);
-      if (cell) cell.focus();
+      var cell3 = grid.querySelector('[data-r="' + (rowIdx + 1) + '"][data-c="' + colIdx + '"]');
+      if (cell3) cell3.focus();
     }
   }
 
   /* ── Schema Editor ── */
   function buildSchemaEditor() {
-    const cols = Object.keys(state.schema);
+    var cols = Object.keys(state.schema);
     if (!cols.length) return null;
 
-    const typeLabels = { continuous: 'Continuous', categorical: 'Categorical', id: 'ID (skip)' };
-    const typeClasses = { continuous: 'badge-indigo', categorical: 'badge-emerald', id: 'badge-slate' };
-    const cycle = ['continuous', 'categorical', 'id'];
+    var typeLabels = { continuous: 'Continuous', categorical: 'Categorical', id: 'ID (skip)' };
+    var typeClasses = { continuous: 'badge-indigo', categorical: 'badge-emerald', id: 'badge-slate' };
+    var cycle = ['continuous', 'categorical', 'id'];
 
-    const container = el('div', { className: 'glass rounded-xl p-5 fade-up' });
-    container.appendChild(el('h3', { className: 'text-slate-200 font-semibold text-base', style: { marginBottom: '4px' } }, '🏷️ Column Types'));
-    container.appendChild(el('p', { style: { color: '#64748b', fontSize: '12px', marginBottom: '16px' } }, 'Click a badge to cycle: Continuous → Categorical → ID (skip) → …'));
+    var container = el('div', { className: 'glass', style: { padding: '20px', borderRadius: '12px' } });
+    container.appendChild(el('h3', { style: { color: '#e2e8f0', fontWeight: '600', fontSize: '16px', marginBottom: '4px' } }, '\ud83c\udff7\ufe0f Column Types'));
+    container.appendChild(el('p', { style: { color: '#64748b', fontSize: '12px', marginBottom: '16px' } }, 'Click a badge to cycle: Continuous \u2192 Categorical \u2192 ID (skip) \u2192 \u2026'));
 
-    const wrap = el('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '12px' } });
+    var wrap = el('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '12px' } });
     cols.forEach(c => {
-      const chip = el('div', {
+      var chip = el('div', {
         style: { display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '6px 12px' }
       });
       chip.appendChild(el('span', { style: { color: '#cbd5e1', fontSize: '14px', fontWeight: '500' } }, c));
-      const badge = el('span', {
-        className: `badge ${typeClasses[state.schema[c]]}`,
+      var badge = el('span', {
+        className: 'badge ' + typeClasses[state.schema[c]],
         onClick: () => {
-          const i = cycle.indexOf(state.schema[c]);
+          var i = cycle.indexOf(state.schema[c]);
           state.schema[c] = cycle[(i + 1) % cycle.length];
           userSchemaOverrides.add(c);
           render();
@@ -553,45 +592,67 @@
     return container;
   }
 
-  /* ── Summary Cards ── */
+  /* ── Summary Cards (with Mean, SD, Median) ── */
   function buildSummaryCards() {
     if (!state.results) return null;
-    const { summaries, activeSchema } = state.results;
-    const contCols = Object.entries(activeSchema).filter(([,t]) => t === 'continuous').map(([c]) => c);
-    const catCols  = Object.entries(activeSchema).filter(([,t]) => t === 'categorical').map(([c]) => c);
+    var summaries = state.results.summaries;
+    var activeSchema = state.results.activeSchema;
+    var contCols = Object.entries(activeSchema).filter(function(e) { return e[1] === 'continuous'; }).map(function(e) { return e[0]; });
+    var catCols  = Object.entries(activeSchema).filter(function(e) { return e[1] === 'categorical'; }).map(function(e) { return e[0]; });
 
-    const grid = el('div', { className: 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' });
-    summaries.forEach((s, i) => {
-      const card = el('div', { className: 'glass glass-hover rounded-xl p-5 fade-up', style: { animationDelay: `${i * .07}s` } });
+    var grid = el('div', { className: 'summary-grid' });
+    summaries.forEach(function(s, i) {
+      var card = el('div', { className: 'glass glass-hover', style: { padding: '20px', borderRadius: '12px' } });
 
       // Header
-      const header = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' } });
-      const groupBadge = el('span', { className: 'group-badge', style: { background: gg(i) } }, `Group ${i + 1}`);
-      header.appendChild(groupBadge);
-      header.appendChild(el('span', { style: { color: '#64748b', fontSize: '12px', marginLeft: 'auto' } }, `${s.count} subjects`));
+      var header = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' } });
+      header.appendChild(el('span', { className: 'group-badge', style: { background: gg(i) } }, 'Group ' + (i + 1)));
+      header.appendChild(el('span', { style: { color: '#64748b', fontSize: '12px', marginLeft: 'auto' } }, s.count + ' subjects'));
       card.appendChild(header);
 
-      // Continuous means
+      // Continuous: Mean, SD, Median
       if (contCols.length > 0) {
-        const sec = el('div', { style: { marginBottom: '12px' } });
-        sec.appendChild(el('p', { style: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '6px' } }, 'Means'));
-        contCols.forEach(c => {
-          const row = el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '2px 0' } });
-          row.appendChild(el('span', { style: { color: '#94a3b8' } }, `${c}:`));
-          row.appendChild(el('span', { style: { color: '#e2e8f0', fontFamily: 'monospace', marginLeft: '8px' } }, s.means[c] != null ? s.means[c].toFixed(3) : '—'));
+        var sec = el('div', { style: { marginBottom: '12px' } });
+
+        // Mean
+        sec.appendChild(el('p', { style: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '6px' } }, 'Mean'));
+        contCols.forEach(function(c) {
+          var row = el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '2px 0' } });
+          row.appendChild(el('span', { style: { color: '#94a3b8' } }, c + ':'));
+          row.appendChild(el('span', { style: { color: '#e2e8f0', fontFamily: 'monospace', marginLeft: '8px' } }, s.means[c] != null ? s.means[c].toFixed(3) : '\u2014'));
           sec.appendChild(row);
         });
+
+        // Standard Deviation
+        sec.appendChild(el('p', { style: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '6px', marginTop: '10px' } }, 'Std Dev'));
+        contCols.forEach(function(c) {
+          var row = el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '2px 0' } });
+          row.appendChild(el('span', { style: { color: '#94a3b8' } }, c + ':'));
+          row.appendChild(el('span', { style: { color: '#e2e8f0', fontFamily: 'monospace', marginLeft: '8px' } }, s.sds[c] != null ? s.sds[c].toFixed(3) : '\u2014'));
+          sec.appendChild(row);
+        });
+
+        // Median
+        sec.appendChild(el('p', { style: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '6px', marginTop: '10px' } }, 'Median'));
+        contCols.forEach(function(c) {
+          var row = el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '2px 0' } });
+          row.appendChild(el('span', { style: { color: '#94a3b8' } }, c + ':'));
+          row.appendChild(el('span', { style: { color: '#e2e8f0', fontFamily: 'monospace', marginLeft: '8px' } }, s.medians[c] != null ? s.medians[c].toFixed(3) : '\u2014'));
+          sec.appendChild(row);
+        });
+
         card.appendChild(sec);
       }
 
       // Categorical counts
-      catCols.forEach(c => {
-        const sec = el('div', { style: { marginBottom: '12px' } });
+      catCols.forEach(function(c) {
+        var sec = el('div', { style: { marginBottom: '12px' } });
         sec.appendChild(el('p', { style: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '6px' } }, c));
         if (s.counts[c]) {
-          Object.entries(s.counts[c]).forEach(([lv, n]) => {
-            const row = el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '2px 0' } });
-            row.appendChild(el('span', { style: { color: '#94a3b8' } }, `${lv}:`));
+          Object.entries(s.counts[c]).forEach(function(entry) {
+            var lv = entry[0], n = entry[1];
+            var row = el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '2px 0' } });
+            row.appendChild(el('span', { style: { color: '#94a3b8' } }, lv + ':'));
             row.appendChild(el('span', { style: { color: '#e2e8f0', fontFamily: 'monospace', marginLeft: '8px' } }, String(n)));
             sec.appendChild(row);
           });
@@ -607,23 +668,21 @@
   /* ── Output Grid ── */
   function buildOutputGrid() {
     if (!state.results) return null;
-    const { assignments } = state.results;
-    const outputCols = ['AssignedGroup', ...state.columns];
-    const outputData = assignments.map(a => ({
-      AssignedGroup: `Group ${a.group + 1}`,
-      _groupIdx: a.group,
-      ...a.subject,
-    }));
+    var assignments = state.results.assignments;
+    var outputCols = ['AssignedGroup'].concat(state.columns);
+    var outputData = assignments.map(function(a) {
+      return Object.assign({ AssignedGroup: 'Group ' + (a.group + 1), _groupIdx: a.group }, a.subject);
+    });
 
-    const container = el('div', { className: 'overflow-x-auto rounded-xl border border-white/[.06]' });
-    const table = el('table', { className: 'grid-table' });
+    var container = el('div', { style: { overflowX: 'auto', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' } });
+    var table = el('table', { className: 'grid-table' });
 
     // Header
-    const thead = el('thead');
-    const hRow = el('tr');
+    var thead = el('thead');
+    var hRow = el('tr');
     hRow.appendChild(el('th', { className: 'row-num', style: { background: 'rgba(255,255,255,0.03)' } }));
-    outputCols.forEach(col => {
-      const th = el('th', { style: { minWidth: '100px' } });
+    outputCols.forEach(function(col) {
+      var th = el('th', { style: { minWidth: '100px' } });
       th.appendChild(el('div', { className: 'grid-header-cell' }, col));
       hRow.appendChild(th);
     });
@@ -631,20 +690,19 @@
     table.appendChild(thead);
 
     // Body
-    const tbody = el('tbody');
-    outputData.forEach((row, ri) => {
-      const tr = el('tr', { className: 'group' });
+    var tbody = el('tbody');
+    outputData.forEach(function(row, ri) {
+      var tr = el('tr');
       tr.appendChild(el('td', { className: 'row-num' }, String(ri + 1)));
-      outputCols.forEach(col => {
-        const td = el('td');
+      outputCols.forEach(function(col) {
+        var td = el('td');
         if (col === 'AssignedGroup') {
-          const cellDiv = el('div', { className: 'grid-cell', style: { display: 'flex', alignItems: 'center' } });
-          const badge = el('span', { className: 'group-badge', style: { background: gg(row._groupIdx) } }, row[col]);
-          cellDiv.appendChild(badge);
+          var cellDiv = el('div', { className: 'grid-cell', style: { display: 'flex', alignItems: 'center' } });
+          cellDiv.appendChild(el('span', { className: 'group-badge', style: { background: gg(row._groupIdx) } }, row[col]));
           td.appendChild(cellDiv);
         } else {
-          const inp = el('input', { className: 'grid-cell', value: row[col] ?? '' });
-          inp.addEventListener('input', () => { outputData[ri][col] = inp.value; });
+          var inp = el('input', { className: 'grid-cell', value: row[col] ?? '' });
+          inp.addEventListener('input', function() { outputData[ri][col] = inp.value; });
           td.appendChild(inp);
         }
         tr.appendChild(td);
@@ -654,36 +712,36 @@
     table.appendChild(tbody);
     container.appendChild(table);
 
-    const wrapper = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
+    var wrapper = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
     wrapper.appendChild(container);
 
     // Download button
-    const dlBtn = el('button', {
+    wrapper.appendChild(el('button', {
       className: 'btn btn-success',
-      onClick: () => {
-        const out = outputData.map(r => {
-          const { _groupIdx, ...rest } = r;
-          return rest;
+      onClick: function() {
+        var out = outputData.map(function(r) {
+          var copy = Object.assign({}, r);
+          delete copy._groupIdx;
+          return copy;
         });
-        const csv = unparseCSV(out);
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const a = document.createElement('a');
+        var csv = unparseCSV(out);
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = 'randomization_results.csv';
         a.click();
       }
-    }, '⬇ Download CSV');
-    wrapper.appendChild(dlBtn);
+    }, '\u2b07 Download CSV'));
     return wrapper;
   }
 
   /* ── Status line ── */
   function renderStatus() {
-    const statusEl = document.getElementById('data-status');
+    var statusEl = document.getElementById('data-status');
     if (!statusEl) return;
-    const rows = getFilledRows();
+    var rows = getFilledRows();
     if (rows.length > 0) {
-      statusEl.textContent = `✔ ${rows.length} subjects loaded · ${state.columns.length} columns detected`;
+      statusEl.textContent = '\u2714 ' + rows.length + ' subjects loaded \u00b7 ' + state.columns.length + ' columns detected';
       statusEl.style.display = '';
     } else {
       statusEl.style.display = 'none';
@@ -694,123 +752,112 @@
      MAIN RENDER
      ══════════════════════════════════════════════════════════════ */
   function render() {
-    const root = document.getElementById('randomizer-root');
+    var root = document.getElementById('randomizer-root');
+    var anim = isFirstRender ? ' fade-up' : '';
 
-    const page = el('div', {
-      className: 'min-h-screen py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto',
-      style: { display: 'flex', flexDirection: 'column', gap: '24px', minHeight: '100vh', paddingTop: '32px', paddingBottom: '32px', paddingLeft: '16px', paddingRight: '16px', maxWidth: '80rem', marginLeft: 'auto', marginRight: 'auto' }
-    });
+    var page = el('div', { className: 'page-container' });
 
     // Header
-    const header = el('header', { className: 'text-center fade-up', style: { marginBottom: '8px' } });
+    var header = el('header', { className: anim, style: { textAlign: 'center', marginBottom: '8px' } });
     header.appendChild(el('h1', {
-      className: 'text-3xl sm:text-4xl font-extrabold leading-tight',
-      style: { background: 'linear-gradient(90deg, #818cf8, #a78bfa, #d946ef)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }
+      style: { fontSize: '2rem', fontWeight: '800', background: 'linear-gradient(90deg, #818cf8, #a78bfa, #d946ef)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', lineHeight: '1.2' }
     }, 'Subject Randomizer'));
     header.appendChild(el('p', { style: { color: '#64748b', fontSize: '14px', marginTop: '4px' } }, 'Covariate-Adaptive Minimization for Preclinical Studies'));
     page.appendChild(header);
 
     // Warning banner
-    const warning = el('div', {
-      className: 'fade-up',
+    var warning = el('div', {
+      className: anim,
       style: { background: 'linear-gradient(90deg, rgba(245,158,11,0.1), rgba(234,88,12,0.1))', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '12px', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '12px' }
     });
-    warning.appendChild(el('span', { style: { fontSize: '24px' } }, '⚠️'));
-    const warnText = el('p', { style: { color: '#fcd34d', fontSize: '14px', fontWeight: '500' } });
+    warning.appendChild(el('span', { style: { fontSize: '24px' } }, '\u26a0\ufe0f'));
+    var warnText = el('p', { style: { color: '#fcd34d', fontSize: '14px', fontWeight: '500' } });
     warnText.innerHTML = '<strong>NOTE:</strong> Download your output data before closing this window. Results are not saved automatically.';
     warning.appendChild(warnText);
     page.appendChild(warning);
 
     // Instructions
-    const instrBox = el('div', { className: 'glass rounded-xl p-5 fade-up', style: { fontSize: '14px', color: '#94a3b8' } });
-    instrBox.appendChild(el('h3', { style: { color: '#e2e8f0', fontWeight: '600', fontSize: '16px', marginBottom: '8px' } }, '📋 How to use this tool'));
-    const ol = el('ol', { style: { listStyleType: 'decimal', paddingLeft: '20px', lineHeight: '1.7' } });
-    ol.innerHTML = `
-      <li><strong style="color:#cbd5e1">Upload or enter your data</strong> — Click <em>"Upload File"</em> to upload a <code style="background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:3px;font-size:12px">.csv</code> file, <strong>or</strong> type directly into the spreadsheet grid below. You can also <strong>paste</strong> tabular data (from Excel, Google Sheets, etc.) into the first cell and it will auto-parse into rows and columns.</li>
-      <li><strong style="color:#cbd5e1">Review detected columns</strong> — The tool auto-detects whether each column is <em>Continuous</em> (numbers) or <em>Categorical</em> (text/labels). Click the <span style="color:#818cf8;font-weight:600">badge</span> to cycle: Continuous → Categorical → ID (skip).</li>
-      <li><strong style="color:#cbd5e1">Set number of groups</strong> — Choose how many treatment groups you need (2–20).</li>
-      <li><strong style="color:#cbd5e1">Randomize</strong> — Click the button. The minimization algorithm will assign each subject to the group that keeps covariates most balanced.</li>
-      <li><strong style="color:#cbd5e1">Download</strong> — Click <em>"Download CSV"</em> below the results grid to save your data.</li>
-    `;
+    var instrBox = el('div', { className: 'glass' + anim, style: { padding: '20px', borderRadius: '12px', fontSize: '14px', color: '#94a3b8' } });
+    instrBox.appendChild(el('h3', { style: { color: '#e2e8f0', fontWeight: '600', fontSize: '16px', marginBottom: '8px' } }, '\ud83d\udccb How to use this tool'));
+    var ol = el('ol', { style: { listStyleType: 'decimal', paddingLeft: '20px', lineHeight: '1.7' } });
+    ol.innerHTML =
+      '<li><strong style="color:#cbd5e1">Upload or enter your data</strong> \u2014 Click <em>"Upload File"</em> to upload a <code style="background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:3px;font-size:12px">.csv</code> file, <strong>or</strong> type directly into the grid below. You can also <strong>paste</strong> tabular data (from Excel, Google Sheets, etc.) into the first cell.</li>' +
+      '<li><strong style="color:#cbd5e1">Review detected columns</strong> \u2014 The tool auto-detects whether each column is <em>Continuous</em> or <em>Categorical</em>. Click the <span style="color:#818cf8;font-weight:600">badge</span> to cycle: Continuous \u2192 Categorical \u2192 ID (skip).</li>' +
+      '<li><strong style="color:#cbd5e1">Set number of groups</strong> \u2014 Choose how many treatment groups you need (2\u201320).</li>' +
+      '<li><strong style="color:#cbd5e1">Randomize</strong> \u2014 Click the button. The minimization algorithm assigns each subject to the most balanced group.</li>' +
+      '<li><strong style="color:#cbd5e1">Download</strong> \u2014 Click <em>"Download CSV"</em> below the results grid to save your data.</li>';
     instrBox.appendChild(ol);
     page.appendChild(instrBox);
 
     // Data Input Card
-    const dataCard = el('div', { className: 'glass rounded-xl p-6 fade-up', style: { display: 'flex', flexDirection: 'column', gap: '16px' } });
-    // Drag & drop handlers
-    dataCard.addEventListener('dragover', e => { e.preventDefault(); dataCard.classList.add('drag-active'); });
-    dataCard.addEventListener('dragleave', () => { dataCard.classList.remove('drag-active'); });
-    dataCard.addEventListener('drop', e => { e.preventDefault(); dataCard.classList.remove('drag-active'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+    var dataCard = el('div', { className: 'glass' + anim, style: { padding: '24px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px' } });
+    dataCard.addEventListener('dragover', function(e) { e.preventDefault(); dataCard.classList.add('drag-active'); });
+    dataCard.addEventListener('dragleave', function() { dataCard.classList.remove('drag-active'); });
+    dataCard.addEventListener('drop', function(e) { e.preventDefault(); dataCard.classList.remove('drag-active'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
 
-    const dataHeader = el('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' } });
-    dataHeader.appendChild(el('h3', { style: { color: '#e2e8f0', fontWeight: '600', fontSize: '16px' } }, '📂 Enter or Upload Your Data'));
-    const uploadWrap = el('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } });
-    const fileInput = el('input', { type: 'file', accept: '.csv,.tsv,.txt', id: 'file-upload', style: { display: 'none' } });
-    fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+    var dataHeader = el('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' } });
+    dataHeader.appendChild(el('h3', { style: { color: '#e2e8f0', fontWeight: '600', fontSize: '16px' } }, '\ud83d\udcc2 Enter or Upload Your Data'));
+    var uploadWrap = el('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } });
+    var fileInput = el('input', { type: 'file', accept: '.csv,.tsv,.txt', id: 'file-upload', style: { display: 'none' } });
+    fileInput.addEventListener('change', function() { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
     uploadWrap.appendChild(fileInput);
-    uploadWrap.appendChild(el('button', { className: 'btn btn-upload', onClick: () => fileInput.click() }, '📄 Upload File'));
-    if (state.fileName) uploadWrap.appendChild(el('span', { style: { color: '#94a3b8', fontSize: '12px' } }, `✔ ${state.fileName}`));
-    uploadWrap.appendChild(el('span', { style: { color: '#475569', fontSize: '12px' } }, '.csv · .tsv — or drag & drop'));
+    uploadWrap.appendChild(el('button', { className: 'btn btn-upload', onClick: function() { fileInput.click(); } }, '\ud83d\udcc4 Upload File'));
+    if (state.fileName) uploadWrap.appendChild(el('span', { style: { color: '#94a3b8', fontSize: '12px' } }, '\u2714 ' + state.fileName));
+    uploadWrap.appendChild(el('span', { style: { color: '#475569', fontSize: '12px' } }, '.csv \u00b7 .tsv \u2014 or drag & drop'));
     dataHeader.appendChild(uploadWrap);
     dataCard.appendChild(dataHeader);
 
     // Grid
-    const gridWrapper = buildInputGrid();
+    var gridWrapper = buildInputGrid();
     gridWrapper.id = 'input-grid';
     dataCard.appendChild(gridWrapper);
 
     // Status
-    const statusP = el('p', { id: 'data-status', style: { color: '#34d399', fontSize: '12px', fontWeight: '500', display: 'none' } });
-    dataCard.appendChild(statusP);
+    dataCard.appendChild(el('p', { id: 'data-status', style: { color: '#34d399', fontSize: '12px', fontWeight: '500', display: 'none' } }));
     page.appendChild(dataCard);
 
     // Schema
-    const hasData = getFilledRows().length > 0;
+    var hasData = getFilledRows().length > 0;
     if (hasData) {
-      const schemaEl = buildSchemaEditor();
+      var schemaEl = buildSchemaEditor();
       if (schemaEl) page.appendChild(schemaEl);
     }
 
     // Controls
     if (hasData) {
-      const controls = el('div', { className: 'fade-up', style: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '16px' } });
-      const groupDiv = el('div');
+      var controls = el('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '16px' } });
+      var groupDiv = el('div');
       groupDiv.appendChild(el('label', { style: { display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px', fontWeight: '500' } }, 'Number of Groups'));
-      const groupInput = el('input', {
-        type: 'number', min: '2', max: '20', value: String(state.numGroups),
-        style: { width: '80px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', color: '#e2e8f0', outline: 'none' }
-      });
-      groupInput.addEventListener('input', () => { state.numGroups = Math.max(2, Math.min(20, +groupInput.value)); });
-      groupInput.addEventListener('focus', () => { groupInput.style.boxShadow = '0 0 0 2px rgba(99,102,241,0.4)'; });
-      groupInput.addEventListener('blur', () => { groupInput.style.boxShadow = 'none'; });
+      var groupInput = el('input', { type: 'number', min: '2', max: '20', value: String(state.numGroups), className: 'group-input' });
+      groupInput.addEventListener('input', function() { state.numGroups = Math.max(2, Math.min(20, +groupInput.value)); });
       groupDiv.appendChild(groupInput);
       controls.appendChild(groupDiv);
 
       controls.appendChild(el('button', {
         className: 'btn btn-primary',
-        onClick: () => {
-          const activeSchema = {};
-          for (const [col, type] of Object.entries(state.schema)) {
-            if (type !== 'id') activeSchema[col] = type;
+        onClick: function() {
+          var activeSchema = {};
+          for (var entry of Object.entries(state.schema)) {
+            if (entry[1] !== 'id') activeSchema[entry[0]] = entry[1];
           }
-          const rows = getFilledRows();
-          const res = runMinimization(rows, state.numGroups, activeSchema);
-          const summaries = summarizeGroups(res.groups, activeSchema);
-          state.results = { ...res, summaries, activeSchema };
+          var rows = getFilledRows();
+          var res = runMinimization(rows, state.numGroups, activeSchema);
+          var summaries = summarizeGroups(res.groups, activeSchema);
+          state.results = Object.assign({}, res, { summaries: summaries, activeSchema: activeSchema });
           render();
         }
-      }, '🎲 Randomize'));
+      }, '\ud83c\udfb2 Randomize'));
       page.appendChild(controls);
     }
 
     // Results
     if (state.results) {
-      const resultsSection = el('div', { className: 'fade-up', style: { display: 'flex', flexDirection: 'column', gap: '24px' } });
+      var resultsSection = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '24px' } });
       resultsSection.appendChild(el('h2', { style: { fontSize: '20px', fontWeight: '700', color: '#e2e8f0' } }, 'Group Summaries'));
-      const cards = buildSummaryCards();
+      var cards = buildSummaryCards();
       if (cards) resultsSection.appendChild(cards);
       resultsSection.appendChild(el('h2', { style: { fontSize: '20px', fontWeight: '700', color: '#e2e8f0' } }, 'Full Assignments'));
-      const outputGrid = buildOutputGrid();
+      var outputGrid = buildOutputGrid();
       if (outputGrid) resultsSection.appendChild(outputGrid);
       page.appendChild(resultsSection);
     }
@@ -818,10 +865,11 @@
     // Footer
     page.appendChild(el('footer', {
       style: { textAlign: 'center', color: '#334155', fontSize: '12px', paddingTop: '32px', paddingBottom: '16px' }
-    }, `Subject Randomizer · Covariate-Adaptive Minimization · © ${new Date().getFullYear()}`));
+    }, 'Subject Randomizer \u00b7 Covariate-Adaptive Minimization \u00b7 \u00a9 ' + new Date().getFullYear()));
 
     root.replaceChildren(page);
     renderStatus();
+    isFirstRender = false;
   }
 
   // Initial render
